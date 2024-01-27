@@ -1,6 +1,6 @@
 """This script is used to initialize the Qdrant db backend with Azure OpenAI."""
 import os
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 import openai
 from dotenv import load_dotenv
@@ -24,11 +24,13 @@ def get_db_connection(open_ai_token: str, cfg: DictConfig, collection_name: str)
     """Initializes a connection to the Qdrant DB.
 
     Args:
+    ----
         open_ai_token (str): The openai token.
         cfg (DictConfig): the config file.
         collection_name (str): The name of the vector database collection.
 
     Returns:
+    -------
         Qdrant: An Langchain Instance of the Qdrant DB.
     """
     if cfg.openai.azure:
@@ -42,7 +44,7 @@ def get_db_connection(open_ai_token: str, cfg: DictConfig, collection_name: str)
     return init_vdb(cfg, collection_name, embedding)
 
 
-def embedd_documents_openai(dir: str, open_ai_token: str, collection_name: Optional[str] = None) -> None:
+def embedd_documents_openai(dir: str, open_ai_token: str, collection_name: str | None = None) -> None:
     """embedd_documents embedds the documents in the given directory.
 
     :param cfg: Configuration from the file
@@ -66,14 +68,16 @@ def embedd_documents_openai(dir: str, open_ai_token: str, collection_name: Optio
     logger.info("SUCCESS: Texts embedded.")
 
 
-def search_documents_openai(open_ai_token: str, query: str, amount: int, threshold: float = 0.0, collection_name: Optional[str] = None) -> List[Tuple[Document, float]]:
+def search_documents_openai(open_ai_token: str, query: str, amount: int, threshold: float = 0.0, collection_name: str | None = None) -> list[tuple[Document, float]]:
     """Searches the documents in the Qdrant DB with a specific query.
 
     Args:
+    ----
         open_ai_token (str): The OpenAI API token.
         query (str): The question for which documents should be searched.
 
     Returns:
+    -------
         List[Tuple[Document, float]]: A list of search results, where each result is a tuple
         containing a Document object and a float score.
     """
@@ -89,10 +93,12 @@ def summarize_text_openai(text: str, token: str, cfg: DictConfig) -> str:
     """Summarizes the given text using the Luminous API.
 
     Args:
+    ----
         text (str): The text to be summarized.
         token (str): The token for the Luminous API.
 
     Returns:
+    -------
         str: The summary of the text.
     """
     prompt = generate_prompt(prompt_name="openai-summarization.j2", text=text, language="de")
@@ -118,12 +124,14 @@ def send_completion(text: str, query: str, token: str, cfg: DictConfig) -> str:
     """Sent completion request to OpenAI API.
 
     Args:
+    ----
         text (str): The text on which the completion should be based.
         query (str): The query for the completion.
         token (str): The token for the OpenAI API.
         cfg (DictConfig):
 
     Returns:
+    -------
         str: Response from the OpenAI API.
     """
     prompt = generate_prompt(prompt_name="openai-summarization.j2", text=text, query=query, language="de")
@@ -149,20 +157,24 @@ def send_custom_completion_openai(
     prompt: str,
     model: str = "gpt3.5",
     max_tokens: int = 256,
-    stop_sequences: List[str] = ["###"],
+    stop_sequences: list[str] | None = None,
     temperature: float = 0,
 ) -> str:
     """Sent completion request to OpenAI API.
 
     Args:
+    ----
         text (str): The text on which the completion should be based.
         query (str): The query for the completion.
         token (str): The token for the OpenAI API.
         cfg (DictConfig):
 
     Returns:
+    -------
         str: Response from the OpenAI API.
     """
+    if stop_sequences is None:
+        stop_sequences = ["###"]
     openai.api_key = token
     response = openai.Completion.create(
         engine=model,
@@ -179,12 +191,14 @@ def qa_openai(token: str, documents: list[tuple[Document, float]], query: str, s
     """QA Function for OpenAI LLMs.
 
     Args:
+    ----
         token (str): The token for the OpenAI API.
         documents (list[tuple[Document, float]]): The documents to be searched.
         query (str): The question for which the LLM should generate an answer.
         summarization (bool, optional): If the Documents should be summarized. Defaults to False.
 
     Returns:
+    -------
         tuple: answer, prompt, meta_data
     """
     # if the list of documents contains only one document extract the text directly
@@ -210,7 +224,6 @@ def qa_openai(token: str, documents: list[tuple[Document, float]], query: str, s
     prompt = generate_prompt("aleph_alpha_qa.j2", text=text, query=query)
 
     try:
-
         # call the luminous api
         answer = send_completion(prompt, token)
 
@@ -233,17 +246,14 @@ def qa_openai(token: str, documents: list[tuple[Document, float]], query: str, s
 
 
 if __name__ == "__main__":
-
     token = os.getenv("OPENAI_API_KEY")
 
     if not token:
-        raise ValueError("OPENAI_API_KEY is not set.")
+        msg = "OPENAI_API_KEY is not set."
+        raise ValueError(msg)
 
     embedd_documents_openai(dir="data", open_ai_token=token)
 
     DOCS = search_documents_openai(open_ai_token="", query="Was ist Vanille?", amount=3)
-    print(f"DOCUMENTS: {DOCS}")
 
     summary = summarize_text_openai(text="Below is an extract from the annual financial report of a company. ", token=token)
-
-    print(f"SUMMARY: {summary}")

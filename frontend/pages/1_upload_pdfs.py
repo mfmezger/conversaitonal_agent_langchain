@@ -1,5 +1,4 @@
 """The page to upload  a pdf."""
-from typing import List, Tuple
 
 import streamlit as st
 from loguru import logger
@@ -7,7 +6,7 @@ from loguru import logger
 from agent.backend.aleph_alpha_service import embedd_documents_aleph_alpha
 
 
-def upload_files(save_path_input: str) -> List[Tuple[str, bytes]]:
+def upload_files(save_path_input: str) -> list[tuple[str, bytes]]:
     """Upload PDF files and save them to the file system."""
     uploaded_files = st.file_uploader("Upload PDF Files", type=PDF_FILE_TYPE, accept_multiple_files=True)
     files = []

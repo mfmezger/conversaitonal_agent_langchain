@@ -1,5 +1,4 @@
 """GPT4ALL Backend Service."""
-from typing import List, Optional, Tuple
 
 from dotenv import load_dotenv
 from gpt4all import GPT4All
@@ -23,10 +22,12 @@ def get_db_connection(cfg: DictConfig, collection_name: str) -> Qdrant:
     """Initializes a connection to the Qdrant DB.
 
     Args:
+    ----
         cfg (DictConfig): The configuration file loaded via OmegaConf.
         aleph_alpha_token (str): The Aleph Alpha API token.
 
     Returns:
+    -------
         Qdrant: The Qdrant DB connection.
     """
     embedding = GPT4AllEmbeddings()
@@ -36,7 +37,7 @@ def get_db_connection(cfg: DictConfig, collection_name: str) -> Qdrant:
     return init_vdb(cfg, collection_name, embedding)
 
 
-def embedd_documents_gpt4all(dir: str, collection_name: Optional[str] = None) -> None:
+def embedd_documents_gpt4all(dir: str, collection_name: str | None = None) -> None:
     """embedd_documents embedds the documents in the given directory.
 
     :param cfg: Configuration from the file
@@ -57,7 +58,7 @@ def embedd_documents_gpt4all(dir: str, collection_name: Optional[str] = None) ->
     logger.info("SUCCESS: Texts embedded.")
 
 
-def embedd_text_gpt4all(text: str, file_name: str, seperator: str, collection_name: Optional[str] = None) -> None:
+def embedd_text_gpt4all(text: str, file_name: str, seperator: str, collection_name: str | None = None) -> None:
     """embedd_documents embedds the documents in the given directory.
 
     :param cfg: Configuration from the file
@@ -68,7 +69,7 @@ def embedd_text_gpt4all(text: str, file_name: str, seperator: str, collection_na
     vector_db: Qdrant = get_db_connection(collection_name=collection_name)
 
     # split the text at the seperator
-    text_list: List = text.split(seperator)
+    text_list: list = text.split(seperator)
 
     # check if first and last element are empty
     if not text_list[0]:
@@ -78,7 +79,7 @@ def embedd_text_gpt4all(text: str, file_name: str, seperator: str, collection_na
 
     metadata = file_name
     # add _ and an incrementing number to the metadata
-    metadata_list: List = [{"source": f"{metadata}_{str(i)}", "page": 0} for i in range(len(text_list))]
+    metadata_list: list = [{"source": f"{metadata}_{i!s}", "page": 0} for i in range(len(text_list))]
 
     vector_db.add_texts(texts=text_list, metadatas=metadata_list)
     logger.info("SUCCESS: Text embedded.")
@@ -89,9 +90,11 @@ def summarize_text_gpt4all(text: str, cfg: DictConfig) -> str:
     """Summarize text with GPT4ALL.
 
     Args:
+    ----
         text (str): The text to be summarized.
 
     Returns:
+    -------
         str: The summarized text.
     """
     prompt = generate_prompt(prompt_name="openai-summarization.j2", text=text, language="de")
@@ -106,10 +109,12 @@ def completion_text_gpt4all(prompt: str, cfg: DictConfig) -> str:
     """Complete text with GPT4ALL.
 
     Args:
+    ----
         text (str): The text as basic input.
         query (str): The query to be inserted into the template.
 
     Returns:
+    -------
         str: The completed text.
     """
     model = GPT4All(cfg.gpt4all.completion_model)
@@ -121,28 +126,33 @@ def custom_completion_prompt_gpt4all(prompt: str, model: str = "orca-mini-3b.ggm
     """This method sents a custom completion request to the Aleph Alpha API.
 
     Args:
+    ----
         token (str): The token for the Aleph Alpha API.
         prompt (str): The prompt to be sent to the API.
 
     Raises:
+    ------
         ValueError: Error if their are no completions or the completion is empty or the prompt and tokenis empty.
     """
     if not prompt:
-        raise ValueError("Prompt cannot be None or empty.")
+        msg = "Prompt cannot be None or empty."
+        raise ValueError(msg)
 
     output = (GPT4All(model)).generate(prompt, max_tokens=max_tokens, temp=temperature)
 
     return str(output)
 
 
-def search_documents_gpt4all(query: str, amount: int, threshold: float = 0.0, collection_name: Optional[str] = None) -> List[Tuple[Document, float]]:
+def search_documents_gpt4all(query: str, amount: int, threshold: float = 0.0, collection_name: str | None = None) -> list[tuple[Document, float]]:
     """Searches the documents in the Qdrant DB with a specific query.
 
     Args:
+    ----
         open_ai_token (str): The OpenAI API token.
         query (str): The question for which documents should be searched.
 
     Returns:
+    -------
         List[Tuple[Document, float]]: A list of search results, where each result is a tuple
         containing a Document object and a float score.
     """
@@ -157,12 +167,14 @@ def qa_gpt4all(documents: list[tuple[Document, float]], query: str, summarizatio
     """QA takes a list of documents and returns a list of answers.
 
     Args:
+    ----
         aleph_alpha_token (str): The Aleph Alpha API token.
         documents (List[Tuple[Document, float]]): A list of tuples containing the document and its relevance score.
         query (str): The query to ask.
         summarization (bool, optional): Whether to use summarization. Defaults to False.
 
     Returns:
+    -------
         Tuple[str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]: A tuple containing the answer, the prompt, and the metadata for the documents.
     """
     # if the list of documents contains only one document extract the text directly
@@ -184,7 +196,6 @@ def qa_gpt4all(documents: list[tuple[Document, float]], query: str, summarizatio
     prompt = generate_prompt("gpt4all-completion.j2", text=text, query=query, language=language)
 
     try:
-
         # call the luminous api
         logger.info("starting completion")
         answer = completion_text_gpt4all(prompt)

@@ -3,7 +3,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import List
 
 from aleph_alpha_client import Client
 from dotenv import load_dotenv
@@ -26,9 +25,11 @@ def setup_tokenizer_client(cfg: DictConfig):
     """Set up the tokenizer and the aleph alpha client.
 
     Args:
+    ----
         cfg (DictConfig): The config data for the embeddings.
 
     Returns:
+    -------
         client, tokenizer: the aleph alpha client and the tokenizer
     """
     client = Client(token=aleph_alpha_token)
@@ -43,23 +44,26 @@ def split_text(text: str):
     """Split the text into chunks.
 
     Args:
+    ----
         text (str): input text.
 
     Returns:
+    -------
         List: List of splits.
     """
     # define the metadata for the document
-    splits = splitter.split_text(text)
-    return splits
+    return splitter.split_text(text)
 
 
 def count_tokens(text: str):
     """Count the number of tokens in the text.
 
     Args:
+    ----
         text (str): The text to count the tokens for.
 
     Returns:
+    -------
         int: Number of tokens.
     """
     tokens = tokenizer.encode(text)
@@ -75,6 +79,7 @@ def initialize_aleph_alpha_vector_db(cfg: DictConfig) -> None:
     """Initializes the Aleph Alpha vector db.
 
     Args:
+    ----
         cfg (DictConfig): Configuration from the file
     """
     qdrant_client = QdrantClient(cfg.qdrant.url, port=cfg.qdrant.port, api_key=os.getenv("QDRANT_API_KEY"), prefer_grpc=cfg.qdrant.prefer_grpc)
@@ -95,9 +100,11 @@ def setup_connection_vector_db(cfg: DictConfig) -> Qdrant:
     """Sets up the connection to the vector db.
 
     Args:
+    ----
         cfg (DictConfig): Configuration from the file
 
     Returns:
+    -------
         Qdrant: The vector db
     """
     embedding = AlephAlphaAsymmetricSemanticEmbedding(
@@ -117,6 +124,7 @@ def parse_txts(text: str, file_name: str, seperator: str, vector_db: Qdrant) -> 
     Text should be marked with a link then </LINK> and then the text.
 
     Args:
+    ----
         text (str): The text to parse
         file_name (str): Name of the file
         seperator (str): The seperator to split the text at
@@ -127,7 +135,7 @@ def parse_txts(text: str, file_name: str, seperator: str, vector_db: Qdrant) -> 
     text = text.split("</LINK>")[1]
 
     # split the text at the seperator
-    text_list: List = text.split(seperator)
+    text_list: list = text.split(seperator)
 
     # check if first and last element are empty
     if not text_list[0]:
@@ -136,8 +144,8 @@ def parse_txts(text: str, file_name: str, seperator: str, vector_db: Qdrant) -> 
         text_list.pop(-1)
 
     # meta data is a list of dicts including the "file_name" and the "link"
-    metadata_list: List = []
-    for i in range(len(text_list)):
+    metadata_list: list = []
+    for _i in range(len(text_list)):
         metadata_list.append({"file_name": file_name, "link": link})
 
     vector_db.add_texts(texts=text_list, metadatas=metadata_list)
@@ -147,6 +155,7 @@ def parse_pdf(dir: str, vector_db: Qdrant) -> None:
     """Parse the pdfs and add them to the vector db.
 
     Args:
+    ----
         dir (str): The directory to parse
         vector_db (Qdrant): The vector db
     """
@@ -167,6 +176,7 @@ def parse_json(dir: str, vector_db: Qdrant) -> None:
     """Parse the json and add them to the vector db.
 
     Args:
+    ----
         dir (str): The directory to parse
         vector_db (Qdrant): The vector db
     """
@@ -232,17 +242,13 @@ def parse_json(dir: str, vector_db: Qdrant) -> None:
     vector_db.add_texts(texts=text_result_list, metadatas=metadata_list)
     logger.info("SUCCESS: Texts added to Qdrant DB.")
 
-    print(f"Number of tokens: {sum(token_list)}")
 
-    print(f"Price: {sum(token_list)/1000*0.008}")
-
-
-def main():
+def main() -> None:
     """Main function to run the script."""
     load_dotenv()
     aleph_alpha_token = os.getenv("ALEPH_ALPHA_API_KEY")
     client, tokenizer = setup_tokenizer_client(aleph_alpha_token)
-    splitter = NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)
+    NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)
     initialize_aleph_alpha_vector_db()
     vector_db = setup_connection_vector_db()
 

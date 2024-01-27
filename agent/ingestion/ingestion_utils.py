@@ -1,6 +1,5 @@
 """Utils for Ingestion."""
 import os
-from typing import List
 
 from aleph_alpha_client import Client
 from dotenv import load_dotenv
@@ -13,27 +12,30 @@ client = Client(token=aleph_alpha_token)
 tokenizer = client.tokenizer("luminous-base")
 
 
-def split_text(text: str) -> List:
+def split_text(text: str) -> list:
     """Split the text into chunks.
 
     Args:
+    ----
         text (str): input text.
 
     Returns:
+    -------
         List: List of splits.
     """
     # define the metadata for the document
-    splits = splitter.split_text(text)
-    return splits
+    return splitter.split_text(text)
 
 
 def count_tokens(text: str) -> int:
     """Count the number of tokens in the text.
 
     Args:
+    ----
         text (str): The text to count the tokens for.
 
     Returns:
+    -------
         int: Number of tokens.
     """
     tokens = tokenizer.encode(text)

@@ -1,8 +1,6 @@
 """This is the utility module."""
-import os
 import uuid
 from pathlib import Path
-from typing import Union
 
 from langchain.prompts import PromptTemplate
 from lingua import Language, LanguageDetectorBuilder
@@ -19,12 +17,15 @@ def combine_text_from_list(input_list: list) -> str:
     """Combines all strings in a list to one string.
 
     Args:
+    ----
         input_list (list): List of strings
 
     Raises:
+    ------
         TypeError: Input list must contain only strings
 
     Returns:
+    -------
         str: Combined string
     """
     # iterate through list and combine all strings to one
@@ -39,7 +40,8 @@ def combine_text_from_list(input_list: list) -> str:
             combined_text += "\n".join(text)
 
         else:
-            raise TypeError("Input list must contain only strings")
+            msg = "Input list must contain only strings"
+            raise TypeError(msg)
 
     return combined_text
 
@@ -48,15 +50,18 @@ def generate_prompt(prompt_name: str, text: str, query: str = "", language: str 
     """Generates a prompt for the Luminous API using a Jinja template.
 
     Args:
+    ----
         prompt_name (str): The name of the file containing the Jinja template.
         text (str): The text to be inserted into the template.
         query (str): The query to be inserted into the template.
         language (str): The language the query should output. Or it can be detected
 
     Returns:
+    -------
         str: The generated prompt.
 
     Raises:
+    ------
         FileNotFoundError: If the specified prompt file cannot be found.
     """
     try:
@@ -71,12 +76,14 @@ def generate_prompt(prompt_name: str, text: str, query: str = "", language: str 
                 language = "en"
 
         if language not in {"en", "de"}:
-            raise ValueError("Language not supported.")
+            msg = "Language not supported."
+            raise ValueError(msg)
 
-        with open(os.path.join("prompts", language, prompt_name), encoding="utf-8") as f:
+        with open(Path("prompts", language, prompt_name), encoding="utf-8") as f:
             prompt = PromptTemplate.from_template(f.read(), template_format="jinja2")
     except FileNotFoundError:
-        raise FileNotFoundError(f"Prompt file '{prompt_name}' not found.")
+        msg = f"Prompt file '{prompt_name}' not found."
+        raise FileNotFoundError(msg)
 
     return prompt.format(text=text, query=query) if query else prompt.format(text=text)
 
@@ -84,7 +91,8 @@ def generate_prompt(prompt_name: str, text: str, query: str = "", language: str 
 def create_tmp_folder() -> str:
     """Creates a temporary folder for files to store.
 
-    Returns:
+    Returns
+    -------
         str: The directory name.
     """
     # Create a temporary folder to save the files
@@ -98,23 +106,26 @@ def create_tmp_folder() -> str:
     return str(tmp_dir)
 
 
-def get_token(token: str | None, llm_provider: Union[str, LLMProvider] | None, aleph_alpha_key: str | None, openai_key: str | None) -> str:
+def get_token(token: str | None, llm_provider: str | LLMProvider | None, aleph_alpha_key: str | None, openai_key: str | None) -> str:
     """Get the token from the environment variables or the parameter.
 
     Args:
+    ----
         token (str, optional): Token from the REST service.
         llm_provider (Union[str, LLMProvider], optional): LLM provider. Defaults to "openai".
 
     Returns:
+    -------
         str: Token for the LLM Provider of choice.
 
     Raises:
+    ------
         ValueError: If no token is provided.
     """
     if isinstance(llm_provider, str):
         llm_provider = LLMProvider.normalize(llm_provider)
 
-    if token == "string" or token == "":
+    if token in ("string", ""):
         token = None
 
     if token:
@@ -122,31 +133,31 @@ def get_token(token: str | None, llm_provider: Union[str, LLMProvider] | None, a
 
     env_token = aleph_alpha_key if llm_provider == LLMProvider.ALEPH_ALPHA else openai_key
     if not env_token and not token:
-        raise ValueError("No token provided.")
+        msg = "No token provided."
+        raise ValueError(msg)
 
     return env_token  # type: ignore
 
 
-def validate_token(token: str | None, llm_backend: Union[str, LLMProvider], aleph_alpha_key: str | None, openai_key: str | None) -> str:
+def validate_token(token: str | None, llm_backend: str | LLMProvider, aleph_alpha_key: str | None, openai_key: str | None) -> str:
     """Test if a token is available, and raise an error if it is missing when needed.
 
     Args:
+    ----
         token (str): Token from the request
         llm_backend (str): Backend from the request
         aleph_alpha_key (str): Key from the .env file
         openai_key (str): Key from the .env file
 
     Raises:
+    ------
         ValueError: If the llm backend is AA or OpenAI and there is no token.
 
     Returns:
+    -------
         str: Token
     """
-    if llm_backend != "gpt4all":
-        token = get_token(token, llm_backend, aleph_alpha_key, openai_key)
-    else:
-        token = "gpt4all"
-    return token
+    return get_token(token, llm_backend, aleph_alpha_key, openai_key) if llm_backend != "gpt4all" else "gpt4all"
 
 
 if __name__ == "__main__":

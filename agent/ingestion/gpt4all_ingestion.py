@@ -61,7 +61,6 @@ def ingest_text_files(dir: str, vector_db: Qdrant, file_ending: str = "*.txt") -
 
 def ingest_custom_text(text: str, seperator: str = "###") -> None:
     """Ingests custom text."""
-    pass
 
 
 # ingest pdfs

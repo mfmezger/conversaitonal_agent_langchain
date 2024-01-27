@@ -13,11 +13,13 @@ def init_vdb(cfg: DictConfig, collection_name: str, embedding: Embeddings):
     """Establish a connection to the Qdrant DB.
 
     Args:
+    ----
         cfg (DictConfig): the configuration from the file.
         collection_name (str): name of the collection in the Qdrant DB.
         embedding (Embeddings): Embedding Type.
 
     Returns:
+    -------
         Qdrant: Established Connection to the Vector DB including Embeddings.
     """
     qdrant_client = QdrantClient(cfg.qdrant.url, port=cfg.qdrant.port, api_key=os.getenv("QDRANT_API_KEY"), prefer_grpc=cfg.qdrant.prefer_grpc)

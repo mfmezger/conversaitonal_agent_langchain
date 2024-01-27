@@ -1,14 +1,17 @@
 """API Tests."""
 import os
 import shutil
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from httpx._models import Response
 from loguru import logger
 
 from agent.api import app, create_tmp_folder
+
+if TYPE_CHECKING:
+    from httpx._models import Response
 
 client: TestClient = TestClient(app)
 
@@ -23,11 +26,11 @@ def test_read_root() -> None:
 def test_create_tmp_folder() -> None:
     """Test the create folder method."""
     tmp_dir = create_tmp_folder()
-    assert os.path.exists(tmp_dir)
+    assert Path(tmp_dir)
     shutil.rmtree(tmp_dir)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 @pytest.mark.parametrize("provider", ["aa", "gpt4all"])  # TODO: if i get access again maybe also "openai",
 async def test_upload_documents(provider: str) -> None:
     """Testing the upload of multiple documents."""
@@ -63,7 +66,7 @@ async def test_upload_documents(provider: str) -> None:
             shutil.rmtree(entry.path)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 @pytest.mark.parametrize("provider", ["aa", "gpt4all"])
 async def test_embedd_one_document(provider: str) -> None:
     """Testing the upload of one document."""
