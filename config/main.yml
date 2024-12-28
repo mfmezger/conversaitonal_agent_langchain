@@ -1,5 +1,7 @@
 qdrant:
+  cloud: True
   url: http://qdrant
+  cloud_url: https://48df36ea-60ab-4707-b59a-a799c1208d3a.us-east4-0.gcp.cloud.qdrant.io:6333
   # url: http://localhost
   port: 6334
   prefer_grpc: True

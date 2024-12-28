@@ -3,13 +3,12 @@
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, File, UploadFile
-from loguru import logger
-
 from agent.backend.LLMStrategy import LLMContext, LLMStrategyFactory
-from agent.data_model.request_data_model import EmbeddTextRequest, LLMBackend, LLMProvider
+from agent.data_model.request_data_model import EmbeddTextRequest, LLMBackend
 from agent.data_model.response_data_model import EmbeddingResponse
 from agent.utils.utility import create_tmp_folder
+from fastapi import APIRouter, File, UploadFile
+from loguru import logger
 
 router = APIRouter()
 
@@ -37,7 +36,7 @@ async def post_embed_documents(llm_backend: LLMBackend, files: list[UploadFile] 
     logger.info("Embedding Multiple Documents")
     tmp_dir = create_tmp_folder()
 
-    service = LLMContext(LLMStrategyFactory.get_strategy(strategy_type=LLMProvider.ALEPH_ALPHA, collection_name=llm_backend.collection_name))
+    service = LLMContext(LLMStrategyFactory.get_strategy(strategy_type=llm_backend.llm_provider, collection_name=llm_backend.collection_name))
     file_names = []
 
     # Use asyncio to write files concurrently
@@ -60,11 +59,25 @@ async def post_embed_documents(llm_backend: LLMBackend, files: list[UploadFile] 
 
 @router.post("/string/", tags=["embeddings"])
 async def embedd_text(embedding: EmbeddTextRequest, llm_backend: LLMBackend) -> EmbeddingResponse:
-    """Embedding text."""
-    logger.info("Embedding Text")
+    """Embedding text into the Vectordatabase.
+
+    Args:
+    ----
+        embedding (EmbeddTextRequest): The Embedding Text with Metadata.
+        llm_backend (LLMBackend): The LLM Backend to use.
+
+    Returns:
+    -------
+        EmbeddingResponse: A response with Success or Failure Notification.
+
+    """
+    logger.info("Starting Embedding Text.")
+
     service = LLMContext(LLMStrategyFactory.get_strategy(strategy_type=llm_backend.llm_provider, collection_name=llm_backend.collection_name))
+
     tmp_dir = create_tmp_folder()
     with (Path(tmp_dir) / (embedding.file_name + ".txt")).open("w") as f:
         f.write(embedding.text)
+
     service.embed_documents(directory=tmp_dir, file_ending=".txt")
     return EmbeddingResponse(status="success", files=[embedding.file_name])

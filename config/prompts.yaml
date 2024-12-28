@@ -1,0 +1,4 @@
+prompts:
+  response_template: prompts/response_template.txt
+  cohere_response_template: prompts/cohere_response_template.txt
+  rephrase_template: prompts/rephrase_template.txt

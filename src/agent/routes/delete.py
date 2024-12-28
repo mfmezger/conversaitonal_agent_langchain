@@ -40,7 +40,7 @@ def delete(page: int, source: str, llm_provider: LLMProvider = LLMProvider.OPENA
     else:
         msg = f"Unsupported LLM provider: {llm_provider}"
         raise ValueError(msg)
-    qdrant_client, _ = load_vec_db_conn()
+    qdrant_client = load_vec_db_conn()
     result = qdrant_client.delete(
         collection_name=collection,
         points_selector=models.FilterSelector(

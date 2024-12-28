@@ -40,11 +40,11 @@ class LLMStrategyFactory:
 
         Raises:
         ------
-            ValueError: _description_
+            ValueError: If there is an unkown provider.
 
         Returns:
         -------
-            LLMBase: _description_
+            LLMBase: Selected Strategy.
 
         """
         strategy = LLMStrategyFactory._strategies.get(strategy_type)
@@ -67,15 +67,11 @@ class LLMContext:
 
     def search(self, search: SearchParams) -> list:
         """Wrapper for the search."""
-        return self.llm.create_search_chain(search=search)
+        return self.llm.search(search=search)
 
     def embed_documents(self, directory: str, file_ending: str) -> None:
         """Wrapper for the Embedding of Documents."""
         return self.llm.embed_documents(directory=directory, file_ending=file_ending)
-
-    def create_collection(self, name: str) -> None:
-        """Wrapper for creating a collection."""
-        return self.llm.create_collection(name)
 
     def summarize_text(self, text: str) -> str:
         """Wrapper for the summarization of text."""

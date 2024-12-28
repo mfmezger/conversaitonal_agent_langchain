@@ -1,7 +1,8 @@
-"""Vector Database Utilities."""
+"""Vector Database Utilities for Qdrant integration."""
 
 import os
 
+from dotenv import load_dotenv
 from langchain_core.embeddings import Embeddings
 from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
 from loguru import logger
@@ -9,27 +10,32 @@ from omegaconf import DictConfig
 from qdrant_client import QdrantClient, models
 from ultra_simple_config import load_config
 
-sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
+load_dotenv(override=True)
+
+# Constants
+SPARSE_MODEL_NAME = "Qdrant/bm25"
+CONFIG_PATH = "config/main.yml"
+
+# Initialize sparse embeddings
+sparse_embeddings = FastEmbedSparse(model_name=SPARSE_MODEL_NAME)
 
 
 def init_vdb(cfg: DictConfig, collection_name: str, embedding: Embeddings) -> QdrantVectorStore:
-    """Establish a connection to the Qdrant DB.
+    """Initialize and return a QdrantVectorStore instance.
 
     Args:
     ----
-        cfg (DictConfig): the configuration from the file.
-        collection_name (str): name of the collection in the Qdrant DB.
-        embedding (Embeddings): Embedding Type.
+        cfg (DictConfig): Configuration object containing Qdrant settings.
+        collection_name (str): Name of the collection in Qdrant.
+        embedding (Embeddings): Embedding model to use.
 
     Returns:
     -------
-        Qdrant: Established Connection to the Vector DB including Embeddings.
+        QdrantVectorStore: Initialized vector store for the specified collection.
 
     """
-    qdrant_client = QdrantClient(cfg.qdrant.url, port=cfg.qdrant.port, api_key=os.getenv("QDRANT_API_KEY"), prefer_grpc=cfg.qdrant.prefer_grpc)
-
-    logger.info(f"USING COLLECTION: {collection_name}")
-
+    qdrant_client = _create_qdrant_client(cfg)
+    logger.info(f"Using collection: {collection_name}")
     vector_db = QdrantVectorStore(
         client=qdrant_client,
         collection_name=collection_name,
@@ -38,75 +44,85 @@ def init_vdb(cfg: DictConfig, collection_name: str, embedding: Embeddings) -> Qd
         retrieval_mode=RetrievalMode.HYBRID,
         sparse_vector_name="fast-sparse-bm25",
     )
-    logger.info("SUCCESS: Qdrant DB initialized.")
-
+    logger.info("Qdrant DB initialized successfully.")
     return vector_db
 
 
-@load_config("config/main.yml")
+@load_config(CONFIG_PATH)
 def load_vec_db_conn(cfg: DictConfig) -> tuple[QdrantClient, DictConfig]:
     """Load the Vector Database Connection.
 
-    This function creates a new QdrantClient instance using the configuration
-    parameters provided in the 'cfg' argument. The QdrantClient is used to
-    interact with the Qdrant vector database.
-
     Args:
     ----
-        cfg (DictConfig): A configuration object that contains the settings
-                          for the QdrantClient. It should have 'url', 'port',
-                          and 'prefer_grpc' fields under the 'qdrant' key.
+        cfg (DictConfig): Configuration object with Qdrant settings.
 
     Returns:
     -------
-        Tuple[QdrantClient, DictConfig]: A tuple containing the created
-                                         QdrantClient instance and the
-                                         original configuration object.
+        Tuple[QdrantClient, DictConfig]: QdrantClient instance and the original config.
 
     """
-    return (QdrantClient(cfg.qdrant.url, port=cfg.qdrant.port, api_key=os.getenv("QDRANT_API_KEY"), prefer_grpc=cfg.qdrant.prefer_grpc), cfg)
+    return _create_qdrant_client(cfg)
 
 
 def initialize_vector_db(collection_name: str, embeddings_size: int) -> None:
-    """Initializes the vector db for a given backend.
+    """Initialize the vector database for a given collection.
 
     Args:
     ----
-        collection_name (str): Name of the Collection
-        embeddings_size (int): Size of the Embeddings
+        collection_name (str): Name of the collection to initialize.
+        embeddings_size (int): Size of the embeddings.
 
     """
-    qdrant_client, _ = load_vec_db_conn()
+    qdrant_client = load_vec_db_conn()
 
     if qdrant_client.collection_exists(collection_name=collection_name):
-        logger.info(f"SUCCESS: Collection {collection_name} already exists.")
+        logger.info(f"Collection {collection_name} already exists.")
     else:
-        generate_collection(collection_name=collection_name, embeddings_size=embeddings_size)
+        _generate_collection(qdrant_client, collection_name, embeddings_size)
 
 
-def generate_collection(collection_name: str, embeddings_size: int) -> None:
-    """Generate a collection for a given backend.
+@load_config(CONFIG_PATH)
+def initialize_all_vector_dbs(cfg: DictConfig) -> None:
+    """Initialize all vector databases specified in the configuration."""
+    collections = [
+        (cfg.qdrant.collection_name_openai, cfg.openai_embeddings.size),
+        (cfg.qdrant.collection_name_cohere, cfg.cohere_embeddings.size),
+        (cfg.qdrant.collection_name_ollama, cfg.ollama_embeddings.size),
+    ]
+
+    for collection_name, embeddings_size in collections:
+        initialize_vector_db(collection_name, embeddings_size)
+
+
+def _create_qdrant_client(cfg: DictConfig) -> QdrantClient:
+    """Create and return a QdrantClient instance.
 
     Args:
     ----
-        qdrant_client (Qdrant): Qdrant Client
-        collection_name (str): Name of the Collection
-        embeddings_size (int): Size of the Embeddings
+        cfg (DictConfig): Configuration object with Qdrant settings.
+
+    Returns:
+    -------
+        QdrantClient: Initialized Qdrant client.
 
     """
-    qdrant_client, _ = load_vec_db_conn()
-    qdrant_client.set_sparse_model("Qdrant/bm25")
+    return QdrantClient(url=cfg.qdrant.url, port=cfg.qdrant.port, api_key=os.getenv("QDRANT_API_KEY"), prefer_grpc=cfg.qdrant.prefer_grpc)
+
+
+def _generate_collection(qdrant_client: QdrantClient, collection_name: str, embeddings_size: int) -> None:
+    """Generate a new collection in Qdrant.
+
+    Args:
+    ----
+        qdrant_client (QdrantClient): Qdrant client instance.
+        collection_name (str): Name of the collection to create.
+        embeddings_size (int): Size of the embeddings.
+
+    """
+    qdrant_client.set_sparse_model(SPARSE_MODEL_NAME)
     qdrant_client.create_collection(
         collection_name=collection_name,
         vectors_config=models.VectorParams(size=embeddings_size, distance=models.Distance.COSINE),
         sparse_vectors_config=qdrant_client.get_fastembed_sparse_vector_params(),
     )
-    logger.info(f"SUCCESS: Collection {collection_name} created.")
-
-
-@load_config("config/main.yml")
-def initialize_all_vector_dbs(cfg: DictConfig) -> None:
-    """Initializes all vector dbs."""
-    initialize_vector_db(cfg.qdrant.collection_name_openai, cfg.openai_embeddings.size)
-    initialize_vector_db(cfg.qdrant.collection_name_cohere, cfg.cohere_embeddings.size)
-    initialize_vector_db(cfg.qdrant.collection_name_ollama, cfg.ollama_embeddings.size)
+    logger.info(f"Collection {collection_name} created successfully.")

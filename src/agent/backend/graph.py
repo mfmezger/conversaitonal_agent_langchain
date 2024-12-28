@@ -1,11 +1,19 @@
-"""Defining the graph."""
+"""Defines the graph structure and components for a conversational AI agent.
+
+This module implements a RAG (Retrieval-Augmented Generation) system using LangChain
+and LangGraph. It includes document retrieval, question answering, and dynamic
+routing based on the conversation state and selected language model.
+"""
 
 import os
 from collections.abc import Sequence
 from typing import Annotated, Literal, TypedDict
 
+from agent.data_model.request_data_model import LLMProvider
+from agent.utils.prompts import load_prompts
+from agent.utils.utility import format_docs_for_citations
+from agent.utils.vdb import load_vec_db_conn
 from langchain_cohere import ChatCohere, CohereEmbeddings
-from langchain_community.chat_models.ollama import ChatOllama
 from langchain_core.documents import Document
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import (
@@ -21,42 +29,39 @@ from langchain_core.prompts import (
 )
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.runnables import ConfigurableField, RunnableConfig, chain
+from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_qdrant import Qdrant
 from langgraph.graph import END, StateGraph, add_messages
-from qdrant_client import QdrantClient
+from langgraph.graph.state import CompiledStateGraph
 
-from agent.backend.prompts import COHERE_RESPONSE_TEMPLATE, REPHRASE_TEMPLATE, RESPONSE_TEMPLATE
-from agent.data_model.request_data_model import LLMProvider
-from agent.utils.utility import format_docs_for_citations
-
-OPENAI_MODEL_KEY = "openai_gpt_3_5_turbo"
+# Constants for model keys
+OPENAI_MODEL_KEY = "gpt-4o"
 COHERE_MODEL_KEY = "cohere_command"
 OLLAMA_MODEL_KEY = "ollama_llama8b3.1"
 
+cohere_response_template, rephrase_template, response_template = load_prompts()
+
 
 class AgentState(TypedDict):
-    """State of the Agent."""
+    """Represents the state of the Agent during conversation."""
 
     query: str
     documents: list[Document]
     messages: Annotated[list[BaseMessage], add_messages]
 
 
-# define models
+# Define language models
 gpt4o = ChatOpenAI(model="gpt-4o", temperature=0, streaming=True)
-
 cohere_command = ChatCohere(
     model="command",
     temperature=0,
     cohere_api_key=os.environ.get("COHERE_API_KEY", "not_provided"),
     streaming=True,
 )
-
 ollama_chat = ChatOllama(model="llama3.1")
 
-
-# define model alternatives
+# Configure model alternatives with fallbacks
 llm = gpt4o.configurable_alternatives(
     ConfigurableField(id="model_name"),
     default_key=LLMProvider.OPENAI.value,
@@ -67,17 +72,15 @@ llm = gpt4o.configurable_alternatives(
 
 
 def get_score_retriever() -> BaseRetriever:
-    """Get the Retriever.
+    """Creates a retriever that includes similarity scores with retrieved documents.
 
     Returns
     -------
-        BaseRetriever: _description_
+        BaseRetriever: Retriever with scoring capability.
 
     """
     embedding = CohereEmbeddings(model="embed-multilingual-v3.0")
-
-    qdrant_client = QdrantClient("http://localhost", port=6333, api_key=os.getenv("QDRANT_API_KEY"), prefer_grpc=False)
-
+    qdrant_client = load_vec_db_conn()
     vector_db = Qdrant(client=qdrant_client, collection_name="cohere", embeddings=embedding)
 
     @chain
@@ -96,38 +99,35 @@ def get_score_retriever() -> BaseRetriever:
         docs, scores = zip(*vector_db.similarity_search_with_score(query), strict=False)
         for doc, score in zip(docs, scores, strict=False):
             doc.metadata["score"] = score
-
         return docs
 
     return retriever_with_score
 
 
 def get_retriever() -> BaseRetriever:
-    """Create a Vector Database retriever.
+    """Creates a standard vector database retriever without scoring.
 
     Returns
     -------
-        BaseRetriever: Qdrant + Cohere Embeddings Retriever
+        BaseRetriever: Qdrant retriever with Cohere embeddings.
 
     """
     embedding = CohereEmbeddings(model="embed-multilingual-v3.0")
-
-    qdrant_client = QdrantClient("http://localhost", port=6333, api_key=os.getenv("QDRANT_API_KEY"), prefer_grpc=False)
-
+    qdrant_client = load_vec_db_conn()
     vector_db = Qdrant(client=qdrant_client, collection_name="cohere", embeddings=embedding)
     return vector_db.as_retriever(search_kwargs={"k": 4})
 
 
 def retrieve_documents(state: AgentState) -> AgentState:
-    """Retrieve documents from the retriever.
+    """Retrieves relevant documents from the retriever based on the user's query.
 
     Args:
     ----
-        state (AgentState): Graph State.
+        state (AgentState): Current state of the agent.
 
     Returns:
     -------
-        AgentState: Modified Graph State.
+        AgentState: Updated state with retrieved documents.
 
     """
     retriever = get_retriever()
@@ -138,21 +138,21 @@ def retrieve_documents(state: AgentState) -> AgentState:
 
 
 def retrieve_documents_with_chat_history(state: AgentState) -> AgentState:
-    """Retrieve documents from the retriever with chat history.
+    """Retrieves relevant documents from the retriever based on the user's query and the chat history.
 
     Args:
     ----
-        state (AgentState): Graph State.
+        state (AgentState): Current state of the agent.
 
     Returns:
     -------
-        AgentState: Modified Graph State.
+        AgentState: Updated state with retrieved documents.
 
     """
     retriever = get_retriever()
     model = llm.with_config(tags=["nostream"])
 
-    condense_queston_prompt = PromptTemplate.from_template(REPHRASE_TEMPLATE)
+    condense_queston_prompt = PromptTemplate.from_template(rephrase_template)
     condense_question_chain = (condense_queston_prompt | model | StrOutputParser()).with_config(
         run_name="CondenseQuestion",
     )
@@ -164,34 +164,31 @@ def retrieve_documents_with_chat_history(state: AgentState) -> AgentState:
     return {"query": query, "documents": relevant_documents}
 
 
-def route_to_retriever(
-    state: AgentState,
-) -> Literal["retriever", "retriever_with_chat_history"]:
-    """Route to the appropriate retriever based on the state.
-
-    Returns
-    -------
-        Literal["retriever", "retriever_with_chat_history"]: Choosen retriever method.
-
-    """
-    # at this point in the graph execution there is exactly one (i.e. first) message from the user,
-    # so use basic retriever without chat history
-    if len(state["messages"]) == 1:
-        return "retriever"
-    else:
-        return "retriever_with_chat_history"
-
-
-def get_chat_history(messages: Sequence[BaseMessage]) -> Sequence[BaseMessage]:
-    """Append the chat history to the messages.
+def route_to_retriever(state: AgentState) -> Literal["retriever", "retriever_with_chat_history"]:
+    """Determines which retriever to use based on the conversation state.
 
     Args:
     ----
-        messages (Sequence[BaseMessage]): Messages from the frontend.
+        state (AgentState): Current state of the agent.
 
     Returns:
     -------
-        Sequence[BaseMessage]: Chat history as Langchain messages.
+        Literal["retriever", "retriever_with_chat_history"]: Chosen retriever method.
+
+    """
+    return "retriever" if len(state["messages"]) == 1 else "retriever_with_chat_history"
+
+
+def get_chat_history(messages: Sequence[BaseMessage]) -> list[dict[str, str]]:
+    """Extracts relevant chat history from a sequence of messages.
+
+    Args:
+    ----
+        messages (Sequence[BaseMessage]): Full message history.
+
+    Returns:
+    -------
+        list[dict[str, str]]: Formatted chat history for context.
 
     """
     return [
@@ -202,17 +199,17 @@ def get_chat_history(messages: Sequence[BaseMessage]) -> Sequence[BaseMessage]:
 
 
 def generate_response(state: AgentState, model: LanguageModelLike, prompt_template: str) -> AgentState:
-    """Create a response from the model.
+    """Generates a response using the provided language model and prompt template.
 
     Args:
     ----
-        state (AgentState): Graph State.
-        model (LanguageModelLike): Language Model.
+        state (AgentState): Current state of the agent.
+        model (LanguageModelLike): Language model to use for response generation.
         prompt_template (str): Template for the prompt.
 
     Returns:
     -------
-        AgentState: Modified Graph State.
+        AgentState: Updated state with the generated response.
 
     """
     prompt = ChatPromptTemplate.from_messages(
@@ -227,8 +224,6 @@ def generate_response(state: AgentState, model: LanguageModelLike, prompt_templa
         {
             "question": state["query"],
             "context": format_docs_for_citations(state["documents"]),
-            # NOTE: we're ignoring the last message here, as it's going to contain the most recent
-            # query and we don't want that to be included in the chat history
             "chat_history": get_chat_history(convert_to_messages(state["messages"][:-1])),
         }
     )
@@ -238,87 +233,93 @@ def generate_response(state: AgentState, model: LanguageModelLike, prompt_templa
 
 
 def generate_response_default(state: AgentState) -> AgentState:
-    """Generate a response using non cohere model.
+    """Generates a response using the default language model and prompt template.
 
     Args:
     ----
-        state (AgentState): Graph State.
+        state (AgentState): Current state of the agent.
 
     Returns:
     -------
-        AgentState: Modified Graph State.
+        AgentState: Updated state with the generated response.
 
     """
-    return generate_response(state, llm, RESPONSE_TEMPLATE)
+    return generate_response(state, llm, response_template)
 
 
 def generate_response_cohere(state: AgentState) -> AgentState:
-    """Generate a response using the Cohere model.
+    """Generates a response using the Cohere language model and prompt template.
 
     Args:
     ----
-        state (AgentState): Graph State.
+        state (AgentState): Current state of the agent.
 
     Returns:
     -------
-        AgentState: Modified Graph State.
+        AgentState: Updated state with the generated response.
 
     """
     model = llm.bind(documents=state["documents"])
-    return generate_response(state, model, COHERE_RESPONSE_TEMPLATE)
+    return generate_response(state, model, cohere_response_template)
 
 
-def route_to_response_synthesizer(state: AgentState, config: RunnableConfig) -> Literal["response_synthesizer", "response_synthesizer_cohere"]:  # noqa: ARG001
-    """Route to the appropriate response synthesizer based on the config.
+def route_to_response_synthesizer(
+    state: AgentState,  # noqa: ARG001
+    config: RunnableConfig,
+) -> Literal["response_synthesizer", "response_synthesizer_cohere"]:
+    """Determines which response synthesizer to use based on the selected model.
 
     Args:
     ----
-        state (AgentState): Graph State.
-        config (RunnableConfig): Runnable Config.
-
+        state (AgentState): Current state of the agent (unused, but kept for consistency).
+        config (RunnableConfig): Configuration containing model selection.
 
     Returns:
     -------
-        Literal["response_synthesizer", "response_synthesizer_cohere"]: Choosen response synthesizer method.
+        Literal["response_synthesizer", "response_synthesizer_cohere"]: Chosen synthesizer method.
 
     """
     model_name = config.get("configurable", {}).get("model_name", OPENAI_MODEL_KEY)
-    if model_name == COHERE_MODEL_KEY:
-        return "response_synthesizer_cohere"
-    else:
-        return "response_synthesizer"
+    return "response_synthesizer_cohere" if model_name == COHERE_MODEL_KEY else "response_synthesizer"
 
 
-def build_graph() -> StateGraph:
-    """Build the graph for the agent.
+def build_graph() -> CompiledStateGraph:
+    """Constructs the conversation flow graph for the agent.
 
     Returns
     -------
-        Graph: The generated graph for RAG.
+        StateGraph: Compiled graph representing the agent's conversation logic.
 
     """
     workflow = StateGraph(AgentState)
 
-    # define nodes
+    # Define nodes
     workflow.add_node("retriever", retrieve_documents)
     workflow.add_node("retriever_with_chat_history", retrieve_documents_with_chat_history)
     workflow.add_node("response_synthesizer", generate_response_default)
     workflow.add_node("response_synthesizer_cohere", generate_response_cohere)
 
-    # set entry point to retrievers
+    # Set entry point
     workflow.set_conditional_entry_point(route_to_retriever)
 
-    # connect retrievers and response synthesizers
+    # Connect nodes
     workflow.add_conditional_edges("retriever", route_to_response_synthesizer)
     workflow.add_conditional_edges("retriever_with_chat_history", route_to_response_synthesizer)
 
-    # connect synthesizers to terminal node
+    # Set end points
     workflow.add_edge("response_synthesizer", END)
     workflow.add_edge("response_synthesizer_cohere", END)
 
     return workflow.compile()
 
 
-# answer = graph.invoke({"messages": [{"role": "human", "content": "wer ist der vater von luke skywalker?"}, {"role": "assistant", "content": "Der Vater von Luke
-# Skywalker war Anakin Skywalker."}, {"role": "human", "content": "und wer ist seine mutter?"}]})
-# logger.info(answer)
+# Example usage (commented out):
+# graph = build_graph()
+# answer = graph.invoke({
+#     "messages": [
+#         {"role": "human", "content": "Who is Luke Skywalker's father?"},
+#         {"role": "assistant", "content": "Luke Skywalker's father is Anakin Skywalker."},
+#         {"role": "human", "content": "And who is his mother?"}
+#     ]
+# })
+# print(answer)
